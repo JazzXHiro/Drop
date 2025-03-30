@@ -3,10 +3,12 @@ package com.badlogic.drop;
 import com.badlogic.gdx.ApplicationListener;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input.Keys;
+import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.Sprite;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.MathUtils;
@@ -37,6 +39,12 @@ public class Main implements ApplicationListener {
 
     Rectangle bucketRectangle;
     Rectangle dropRectangle;
+    
+    // Score variables
+    private int currentScore = 0;
+    private int highScore = 0;
+    private BitmapFont font;
+    private Preferences prefs;
 
     @Override
     public void create() {
@@ -63,7 +71,15 @@ public class Main implements ApplicationListener {
 
         music.setLooping(true);
         music.setVolume(.5f); //floating point value ranging from 0 to 1.
-        music.play();   
+        music.play();
+        
+        // Initialize font
+        font = new BitmapFont();
+        font.setColor(Color.WHITE);
+        
+        // Load high score
+        prefs = Gdx.app.getPreferences("dropGame");
+        highScore = prefs.getInteger("highScore", 0);
     }
 
     @Override
@@ -120,8 +136,18 @@ public class Main implements ApplicationListener {
             else if (bucketRectangle.overlaps(dropRectangle)){
                 dropSprites.removeIndex(i);
                 dropSound.play();
+                
+                // Increment score when drop is caught
+                currentScore++;
+                
+                // Update high score if needed
+                if (currentScore > highScore) {
+                    highScore = currentScore;
+                    // Save high score
+                    prefs.putInteger("highScore", highScore);
+                    prefs.flush();
+                }
             }
-
         }
 
         dropTimer += delta;
@@ -146,6 +172,10 @@ public class Main implements ApplicationListener {
         for (Sprite dropSprite: dropSprites){
             dropSprite.draw(spriteBatch);
         }
+        
+        // Draw score and high score
+        font.draw(spriteBatch, "Score: " + currentScore, 10, worldHeight - 10);
+        font.draw(spriteBatch, "High Score: " + highScore, 10, worldHeight - 30);
 
         spriteBatch.end();
     }
@@ -170,6 +200,8 @@ public class Main implements ApplicationListener {
     @Override
     public void resume() {
         // Invoked when your application is resumed after pause.
+        // Reload high score in case it was changed
+        highScore = prefs.getInteger("highScore", 0);
     }
 
     @Override
@@ -180,5 +212,6 @@ public class Main implements ApplicationListener {
         dropSound.dispose();
         music.dispose();
         spriteBatch.dispose();
+        font.dispose();
     }
 }
