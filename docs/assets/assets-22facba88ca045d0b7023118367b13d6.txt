@@ -1,0 +1,5 @@
+background.png
+bucket.png
+drop.ogg
+drop.png
+music.ogg
