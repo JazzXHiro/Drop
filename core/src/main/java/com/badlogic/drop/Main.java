@@ -46,32 +46,55 @@ public class Main implements ApplicationListener {
     private BitmapFont font;
     private Preferences prefs;
 
+    private boolean gameStarted = false;
+    private boolean silentMode = false;
+
     @Override
     public void create() {
         backgroundTexture = new Texture("background.png");
         bucketTexture = new Texture("bucket.png");
         dropTexture = new Texture("drop.png");
-        dropSound = Gdx.audio.newSound(Gdx.files.internal("drop.mp3"));
-        music = Gdx.audio.newMusic(Gdx.files.internal("music.mp3"));
-
+        
         spriteBatch = new SpriteBatch();
-        viewport = new FitViewport(800, 480);  // More standard dimensions
+        viewport = new FitViewport(800, 480);
         viewport.getCamera().position.set(viewport.getWorldWidth() / 2, viewport.getWorldHeight() / 2, 0);
 
         bucketSprite = new Sprite(bucketTexture);
         bucketSprite.setSize(64, 64);
         bucketSprite.setPosition(viewport.getWorldWidth() / 2 - 32, 20);
         
-        touchPos = new Vector2(); //Using Vector2 prevents the triggering of garbage collector that prevents lag spikes
-
+        touchPos = new Vector2();
         dropSprites = new Array<>();
-
         bucketRectangle = new Rectangle();
         dropRectangle = new Rectangle();
-
-        music.setLooping(true);
-        music.setVolume(.5f); //floating point value ranging from 0 to 1.
-        music.play();
+        
+        // Initialize audio but don't play yet
+        try {
+            // Try to load audio with fallbacks for different platforms
+            if (Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL)) {
+                // WebGL prefers OGG format for maximum compatibility
+                try {
+                    dropSound = Gdx.audio.newSound(Gdx.files.internal("drop.ogg"));
+                    music = Gdx.audio.newMusic(Gdx.files.internal("music.ogg"));
+                } catch (Exception e) {
+                    // Fall back to MP3 if OGG files aren't available
+                    dropSound = Gdx.audio.newSound(Gdx.files.internal("drop.mp3"));
+                    music = Gdx.audio.newMusic(Gdx.files.internal("music.mp3"));
+                }
+            } else {
+                // Desktop/mobile can use MP3 directly
+                dropSound = Gdx.audio.newSound(Gdx.files.internal("drop.mp3"));
+                music = Gdx.audio.newMusic(Gdx.files.internal("music.mp3"));
+            }
+            
+            if (music != null) {
+                music.setLooping(true);
+                music.setVolume(.5f);
+            }
+        } catch (Exception e) {
+            Gdx.app.log("Audio", "Error loading audio: " + e.getMessage());
+            silentMode = true;
+        }
         
         // Initialize font
         font = new BitmapFont();
@@ -80,6 +103,12 @@ public class Main implements ApplicationListener {
         // Load high score
         prefs = Gdx.app.getPreferences("dropGame");
         highScore = prefs.getInteger("highScore", 0);
+        
+        // Auto-start on desktop, but wait for interaction on WebGL
+        if (!Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL)) {
+            gameStarted = true;
+            if (music != null) music.play();
+        }
     }
 
     @Override
@@ -95,6 +124,22 @@ public class Main implements ApplicationListener {
     }
 
     private void input(){
+        // Start game on any input if not started in WebGL
+        if (!gameStarted && Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL)) {
+            if (Gdx.input.justTouched() || Gdx.input.isKeyJustPressed(Keys.ANY_KEY)) {
+                gameStarted = true;
+                if (!silentMode) {
+                    try {
+                        if (music != null) music.play();
+                    } catch (Exception e) {
+                        Gdx.app.log("Audio", "Error playing music: " + e.getMessage());
+                        silentMode = true;
+                    }
+                }
+            }
+            return; // Skip other input until game starts
+        }
+
         float speed = 250f;
         float delta = Gdx.graphics.getDeltaTime();
 
@@ -112,6 +157,11 @@ public class Main implements ApplicationListener {
     }
 
     private void logic(){
+        // Skip game logic if not started in WebGL
+        if (!gameStarted && Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL)) {
+            return;
+        }
+        
         float worldWidth = viewport.getWorldWidth();
         float worldHeight = viewport.getWorldHeight();
 
@@ -135,7 +185,14 @@ public class Main implements ApplicationListener {
             if (dropSprite.getY() < -dropHeight) dropSprites.removeIndex(i);
             else if (bucketRectangle.overlaps(dropRectangle)){
                 dropSprites.removeIndex(i);
-                dropSound.play();
+                if (!silentMode) {
+                    try {
+                        if (dropSound != null) dropSound.play();
+                    } catch (Exception e) {
+                        Gdx.app.log("Audio", "Error playing drop sound: " + e.getMessage());
+                        silentMode = true;
+                    }
+                }
                 
                 // Increment score when drop is caught
                 currentScore++;
@@ -166,16 +223,28 @@ public class Main implements ApplicationListener {
         float worldWidth = viewport.getWorldWidth();
         float worldHeight = viewport.getWorldHeight();
 
+        // Draw background
         spriteBatch.draw(backgroundTexture, 0, 0, worldWidth, worldHeight);
-        bucketSprite.draw(spriteBatch);  // Draw bucket in middle bottom
-
-        for (Sprite dropSprite: dropSprites){
-            dropSprite.draw(spriteBatch);
-        }
         
-        // Draw score and high score
-        font.draw(spriteBatch, "Score: " + currentScore, 10, worldHeight - 10);
-        font.draw(spriteBatch, "High Score: " + highScore, 10, worldHeight - 30);
+        // Check if game needs to show start screen in WebGL
+        if (!gameStarted && Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL)) {
+            // Draw start instructions
+            String instructions = "TAP OR PRESS ANY KEY TO START";
+            float textWidth = font.draw(spriteBatch, instructions, 0, 0).width;
+            font.draw(spriteBatch, instructions, 
+                     (worldWidth - textWidth) / 2, worldHeight / 2);
+        } else {
+            // Draw game elements
+            bucketSprite.draw(spriteBatch);
+            
+            for (Sprite dropSprite: dropSprites){
+                dropSprite.draw(spriteBatch);
+            }
+            
+            // Draw score and high score
+            font.draw(spriteBatch, "Score: " + currentScore, 10, worldHeight - 10);
+            font.draw(spriteBatch, "High Score: " + highScore, 10, worldHeight - 30);
+        }
 
         spriteBatch.end();
     }
