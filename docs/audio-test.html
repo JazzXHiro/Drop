@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OGG Audio Test</title>
+</head>
+<body>
+    <h1>Audio Format Test</h1>
+    
+    <h2>OGG Audio Test</h2>
+    <audio controls>
+        <source src="assets/drop.ogg" type="audio/ogg">
+        Your browser does not support OGG audio.
+    </audio>
+    
+    <h2>MP3 Audio Test</h2>
+    <audio controls>
+        <source src="assets/drop.mp3" type="audio/mpeg">
+        Your browser does not support MP3 audio.
+    </audio>
+    
+    <script>
+        // Log any audio errors
+        document.addEventListener('DOMContentLoaded', function() {
+            const audioElements = document.querySelectorAll('audio');
+            audioElements.forEach(function(audio) {
+                audio.addEventListener('error', function(e) {
+                    console.error('Audio error:', e);
+                });
+            });
+        });
+    </script>
+</body>
+</html>
