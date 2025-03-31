@@ -73,20 +73,46 @@ public class Main implements ApplicationListener {
             boolean isWebGL = Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL);
             boolean isMobile = Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.Android) || 
                              Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.iOS);
+            boolean isMobileBrowser = isWebGL && (Gdx.app.getVersion() == 0);
             
-            Gdx.app.log("Audio", "Platform - WebGL: " + isWebGL + ", Mobile: " + isMobile);
+            Gdx.app.log("Audio", "Platform - WebGL: " + isWebGL + ", Mobile: " + isMobile + ", Mobile Browser: " + isMobileBrowser);
             
             // Try to load audio files with platform-specific fallbacks
-            if (isWebGL || isMobile) {
-                // For WebGL and mobile, try OGG first (better mobile support)
-                if (Gdx.files.internal("drop.ogg").exists()) {
-                    Gdx.app.log("Audio", "Loading OGG files for " + (isWebGL ? "WebGL" : "mobile"));
-                    dropSound = Gdx.audio.newSound(Gdx.files.internal("drop.ogg"));
-                    music = Gdx.audio.newMusic(Gdx.files.internal("music.ogg"));
-                } else if (Gdx.files.internal("drop.mp3").exists()) {
-                    Gdx.app.log("Audio", "OGG not found, loading MP3 files");
+            if (isWebGL) {
+                if (isMobileBrowser) {
+                    // For mobile browsers on Android, OGG usually works better
+                    Gdx.app.log("Audio", "Android mobile browser detected, prioritizing OGG");
+                    if (Gdx.files.internal("drop.ogg").exists()) {
+                        Gdx.app.log("Audio", "Loading OGG files for Android mobile browser");
+                        dropSound = Gdx.audio.newSound(Gdx.files.internal("drop.ogg"));
+                        music = Gdx.audio.newMusic(Gdx.files.internal("music.ogg"));
+                    } else if (Gdx.files.internal("drop.mp3").exists()) {
+                        Gdx.app.log("Audio", "OGG not found, trying MP3 for Android mobile browser");
+                        dropSound = Gdx.audio.newSound(Gdx.files.internal("drop.mp3"));
+                        music = Gdx.audio.newMusic(Gdx.files.internal("music.mp3"));
+                    }
+                } else {
+                    // For desktop browsers, try OGG first
+                    if (Gdx.files.internal("drop.ogg").exists()) {
+                        Gdx.app.log("Audio", "Loading OGG files for desktop browser");
+                        dropSound = Gdx.audio.newSound(Gdx.files.internal("drop.ogg"));
+                        music = Gdx.audio.newMusic(Gdx.files.internal("music.ogg"));
+                    } else if (Gdx.files.internal("drop.mp3").exists()) {
+                        Gdx.app.log("Audio", "OGG not found, loading MP3 files");
+                        dropSound = Gdx.audio.newSound(Gdx.files.internal("drop.mp3"));
+                        music = Gdx.audio.newMusic(Gdx.files.internal("music.mp3"));
+                    }
+                }
+            } else if (isMobile) {
+                // For native mobile, try MP3 first
+                if (Gdx.files.internal("drop.mp3").exists()) {
+                    Gdx.app.log("Audio", "Loading MP3 files for native mobile");
                     dropSound = Gdx.audio.newSound(Gdx.files.internal("drop.mp3"));
                     music = Gdx.audio.newMusic(Gdx.files.internal("music.mp3"));
+                } else if (Gdx.files.internal("drop.ogg").exists()) {
+                    Gdx.app.log("Audio", "MP3 not found, loading OGG files for native mobile");
+                    dropSound = Gdx.audio.newSound(Gdx.files.internal("drop.ogg"));
+                    music = Gdx.audio.newMusic(Gdx.files.internal("music.ogg"));
                 }
             } else {
                 // For desktop, try MP3 first
@@ -155,7 +181,52 @@ public class Main implements ApplicationListener {
             if (Gdx.input.justTouched() || Gdx.input.isKeyJustPressed(Keys.ANY_KEY)) {
                 gameStarted = true;
                 
-                if (!silentMode && music != null) {
+                // Mobile browsers need special handling for audio
+                boolean isMobileBrowser = Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL) && 
+                                         (Gdx.app.getVersion() == 0); // Default to assuming mobile for WebGL
+                
+                // Re-initialize audio for mobile browsers on user gesture
+                if (isMobileBrowser) {
+                    Gdx.app.log("Audio", "Android mobile browser detected - special handling");
+                    // Try to reload and play music immediately on user interaction for Android
+                    try {
+                        if (music != null) {
+                            music.dispose(); // Release any previous instance
+                        }
+                        
+                        // Try different formats - for Android, OGG first
+                        if (Gdx.files.internal("music.ogg").exists()) {
+                            Gdx.app.log("Audio", "Trying OGG for Android mobile browser");
+                            music = Gdx.audio.newMusic(Gdx.files.internal("music.ogg"));
+                        } else if (Gdx.files.internal("music.mp3").exists()) {
+                            Gdx.app.log("Audio", "Trying MP3 for Android mobile browser");
+                            music = Gdx.audio.newMusic(Gdx.files.internal("music.mp3"));
+                        }
+                        
+                        if (music != null) {
+                            // Android-specific settings
+                            music.setLooping(true);
+                            music.setVolume(1.0f);
+                            // Give Android a moment to prepare the audio
+                            Gdx.app.postRunnable(new Runnable() {
+                                @Override
+                                public void run() {
+                                    try {
+                                        music.play();
+                                        Gdx.app.log("Audio", "Android browser: Music play() called on separate thread");
+                                    } catch (Exception e) {
+                                        Gdx.app.log("Audio", "Android thread error: " + e.getMessage());
+                                    }
+                                }
+                            });
+                            Gdx.app.log("Audio", "Android browser: Music scheduled to play");
+                        }
+                    } catch (Exception e) {
+                        Gdx.app.log("Audio", "Android browser: Error with music: " + e.getMessage());
+                        silentMode = true;
+                    }
+                } else if (!silentMode && music != null) {
+                    // Regular WebGL and other platforms
                     try {
                         Gdx.app.log("Audio", "Attempting to play music on user interaction");
                         music.setVolume(1.0f);
@@ -189,8 +260,10 @@ public class Main implements ApplicationListener {
     }
 
     private void logic(){
-        // Skip game logic if not started in WebGL
-        if (!gameStarted && Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL)) {
+        // Skip game logic if not started in WebGL or mobile
+        if (!gameStarted && (Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL) ||
+            Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.Android) ||
+            Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.iOS))) {
             return;
         }
         
@@ -221,7 +294,53 @@ public class Main implements ApplicationListener {
                     try {
                         // Try to play the sound with maximum volume
                         Gdx.app.log("Audio", "Attempting to play drop sound");
-                        dropSound.play(1.0f);
+                        
+                        // For mobile browsers, may need to reload the sound each time
+                        boolean isMobileBrowser = Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL) && 
+                                                 (Gdx.app.getVersion() == 0);
+                        
+                        if (isMobileBrowser) {
+                            // Android-specific sound handling
+                            try {
+                                // Dispose old sound if exists
+                                if (dropSound != null) {
+                                    // Store a reference to avoid NullPointerException
+                                    Sound oldSound = dropSound;
+                                    
+                                    // Try to load new sound instance - prefer OGG for Android
+                                    if (Gdx.files.internal("drop.ogg").exists()) {
+                                        dropSound = Gdx.audio.newSound(Gdx.files.internal("drop.ogg"));
+                                    } else if (Gdx.files.internal("drop.mp3").exists()) {
+                                        dropSound = Gdx.audio.newSound(Gdx.files.internal("drop.mp3"));
+                                    }
+                                    
+                                    // Play new sound with Android-specific approach
+                                    if (dropSound != null) {
+                                        // Use postRunnable for more reliable Android sound
+                                        final Sound finalSound = dropSound;
+                                        Gdx.app.postRunnable(new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                try {
+                                                    finalSound.play(1.0f);
+                                                } catch (Exception e) {
+                                                    Gdx.app.log("Audio", "Android thread sound error: " + e.getMessage());
+                                                }
+                                            }
+                                        });
+                                        Gdx.app.log("Audio", "Android: Scheduled drop sound");
+                                    }
+                                    
+                                    // Dispose old sound after playing new one
+                                    oldSound.dispose();
+                                }
+                            } catch (Exception e) {
+                                Gdx.app.log("Audio", "Error with Android sound: " + e.getMessage());
+                            }
+                        } else {
+                            // Normal sound playback for non-mobile
+                            dropSound.play(1.0f);
+                        }
                     } catch (Exception e) {
                         Gdx.app.log("Audio", "Error playing drop sound: " + e.getMessage());
                         silentMode = true;
@@ -260,8 +379,10 @@ public class Main implements ApplicationListener {
         // Draw background
         spriteBatch.draw(backgroundTexture, 0, 0, worldWidth, worldHeight);
         
-        // Check if game needs to show start screen in WebGL
-        if (!gameStarted && Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL)) {
+        // Check if game needs to show start screen in WebGL or mobile
+        if (!gameStarted && (Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL) ||
+            Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.Android) ||
+            Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.iOS))) {
             // Draw start instructions
             String instructions = "TAP OR PRESS ANY KEY TO START";
             float textWidth = font.draw(spriteBatch, instructions, 0, 0).width;
