@@ -60,6 +60,10 @@ public class Main implements ApplicationListener {
     private Rectangle adminButton = new Rectangle();
     private Rectangle userButton = new Rectangle();
     
+    // Button hover states
+    private boolean adminButtonHovered = false;
+    private boolean userButtonHovered = false;
+    
     // Score variables
     private int currentScore = 0;
     private int highScore = 0;
@@ -254,16 +258,20 @@ public class Main implements ApplicationListener {
     private void inputLogin() {
         // Handle input for the login screen
         if (isSelectingRole) {
+            // Update button hover states
+            touchPos.set(Gdx.input.getX(), Gdx.input.getY());
+            viewport.unproject(touchPos);
+            
+            adminButtonHovered = adminButton.contains(touchPos.x, touchPos.y);
+            userButtonHovered = userButton.contains(touchPos.x, touchPos.y);
+            
             // First screen - select role with clickable buttons
             if (Gdx.input.justTouched()) {
-                touchPos.set(Gdx.input.getX(), Gdx.input.getY());
-                viewport.unproject(touchPos);
-                
-                if (adminButton.contains(touchPos.x, touchPos.y)) {
+                if (adminButtonHovered) {
                     currentRole = UserRole.ADMIN;
                     isSelectingRole = false;
                     inputText = "";
-                } else if (userButton.contains(touchPos.x, touchPos.y)) {
+                } else if (userButtonHovered) {
                     currentRole = UserRole.USER;
                     isSelectingRole = false;
                     inputText = "";
@@ -380,6 +388,30 @@ public class Main implements ApplicationListener {
             adminButton.set(worldWidth / 2 - buttonWidth / 2, startY, buttonWidth, buttonHeight);
             spriteBatch.setColor(0.2f, 0.2f, 0.8f, 1); // Blue for admin
             spriteBatch.draw(backgroundTexture, adminButton.x, adminButton.y, adminButton.width, adminButton.height);
+            
+            // Draw white border if button is hovered
+            if (adminButtonHovered) {
+                Color prevColor = spriteBatch.getColor();
+                spriteBatch.setColor(Color.WHITE);
+                
+                // Draw border lines (2 pixels wide)
+                float borderWidth = 4;
+                // Top border
+                spriteBatch.draw(backgroundTexture, adminButton.x, adminButton.y + adminButton.height - borderWidth, 
+                                adminButton.width, borderWidth);
+                // Bottom border
+                spriteBatch.draw(backgroundTexture, adminButton.x, adminButton.y, 
+                                adminButton.width, borderWidth);
+                // Left border
+                spriteBatch.draw(backgroundTexture, adminButton.x, adminButton.y, 
+                                borderWidth, adminButton.height);
+                // Right border
+                spriteBatch.draw(backgroundTexture, adminButton.x + adminButton.width - borderWidth, adminButton.y, 
+                                borderWidth, adminButton.height);
+                
+                spriteBatch.setColor(prevColor);
+            }
+            
             spriteBatch.setColor(Color.WHITE);
             
             String adminText = "ADMIN";
@@ -392,6 +424,30 @@ public class Main implements ApplicationListener {
             userButton.set(worldWidth / 2 - buttonWidth / 2, startY - buttonHeight - buttonSpacing, buttonWidth, buttonHeight);
             spriteBatch.setColor(0.2f, 0.8f, 0.2f, 1); // Green for user
             spriteBatch.draw(backgroundTexture, userButton.x, userButton.y, userButton.width, userButton.height);
+            
+            // Draw white border if button is hovered
+            if (userButtonHovered) {
+                Color prevColor = spriteBatch.getColor();
+                spriteBatch.setColor(Color.WHITE);
+                
+                // Draw border lines (2 pixels wide)
+                float borderWidth = 4;
+                // Top border
+                spriteBatch.draw(backgroundTexture, userButton.x, userButton.y + userButton.height - borderWidth, 
+                                userButton.width, borderWidth);
+                // Bottom border
+                spriteBatch.draw(backgroundTexture, userButton.x, userButton.y, 
+                                userButton.width, borderWidth);
+                // Left border
+                spriteBatch.draw(backgroundTexture, userButton.x, userButton.y, 
+                                borderWidth, userButton.height);
+                // Right border
+                spriteBatch.draw(backgroundTexture, userButton.x + userButton.width - borderWidth, userButton.y, 
+                                borderWidth, userButton.height);
+                
+                spriteBatch.setColor(prevColor);
+            }
+            
             spriteBatch.setColor(Color.WHITE);
             
             String userText = "USER";
