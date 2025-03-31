@@ -806,13 +806,16 @@ public class Main implements ApplicationListener {
     }
 
     private void createDroplet(){
-        float dropWidth = 1;
-        float dropHeight = 1;
         float worldWidth = viewport.getWorldWidth();
         float worldHeight = viewport.getWorldHeight();
 
+        // Create the droplet with proper size
         Sprite dropSprite = new Sprite(dropTexture);
-        dropSprite.setSize(64, 64);
+        float dropWidth = 64;
+        float dropHeight = 64;
+        dropSprite.setSize(dropWidth, dropHeight);
+        
+        // Set position using the actual sprite width to prevent edge spawning
         dropSprite.setX(MathUtils.random(0f, worldWidth - dropWidth));
         dropSprite.setY(worldHeight);
         dropSprites.add(dropSprite);
