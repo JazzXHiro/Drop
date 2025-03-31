@@ -301,6 +301,13 @@ public class Main implements ApplicationListener {
             
             // Also keep keyboard input for desktop
             if (!waitingForTextInput) {
+                // Handle escape to go back to role selection
+                if (Gdx.input.isKeyJustPressed(Keys.ESCAPE) || Gdx.input.isKeyJustPressed(Keys.BACK)) {
+                    isSelectingRole = true;
+                    inputText = "";
+                    return;
+                }
+                
                 // Add numbers
                 for (int i = 0; i < 10; i++) {
                     if (Gdx.input.isKeyJustPressed(Keys.NUM_0 + i)) {
@@ -455,6 +462,11 @@ public class Main implements ApplicationListener {
             
             float promptWidth = font.draw(spriteBatch, instructions, 0, 0).width;
             font.draw(spriteBatch, instructions, (worldWidth - promptWidth) / 2, worldHeight * 0.3f);
+            
+            // Back instruction
+            String backInstruction = "Press ESC to go back";
+            float backWidth = font.draw(spriteBatch, backInstruction, 0, 0).width;
+            font.draw(spriteBatch, backInstruction, (worldWidth - backWidth) / 2, worldHeight * 0.2f);
         }
         
         spriteBatch.end();
