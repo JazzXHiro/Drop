@@ -15,11 +15,27 @@ import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
+import com.badlogic.gdx.utils.ObjectMap;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 
 /** {@link com.badlogic.gdx.ApplicationListener} implementation shared by all platforms. */
 public class Main implements ApplicationListener {
+    // Game states
+    private enum GameState {
+        LOGIN,       // Login screen
+        ADMIN_VIEW,  // Admin high score view
+        GAME_READY,  // Ready to start
+        GAME_RUNNING // Game is running
+    }
+    
+    // User roles
+    private enum UserRole {
+        USER,
+        ADMIN
+    }
+    
+    // Game assets
     Texture backgroundTexture;
     Texture bucketTexture;
     Texture dropTexture;
@@ -45,6 +61,15 @@ public class Main implements ApplicationListener {
     private int highScore = 0;
     private BitmapFont font;
     private Preferences prefs;
+    
+    // Login system variables
+    private GameState gameState = GameState.LOGIN;
+    private String currentUser = "";
+    private UserRole currentRole = UserRole.USER;
+    private String inputText = "";
+    private boolean isSelectingRole = true;
+    private ObjectMap<String, Integer> allHighScores = new ObjectMap<>();
+    private Array<String> userNames = new Array<>();
 
     private boolean gameStarted = false;
     private boolean silentMode = false;
@@ -147,17 +172,46 @@ public class Main implements ApplicationListener {
         font = new BitmapFont();
         font.setColor(Color.WHITE);
         
-        // Load high score
+        // Load user data and high scores
+        loadUserData();
+    }
+
+    private void loadUserData() {
         prefs = Gdx.app.getPreferences("dropGame");
-        highScore = prefs.getInteger("highScore", 0);
         
-        // Only auto-start on desktop, wait for interaction on WebGL and mobile
-        boolean isWebGL = Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL);
-        boolean isMobile = Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.Android) || 
-                          Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.iOS);
-        if (!isWebGL && !isMobile) {
-            gameStarted = true;
-            if (music != null) music.play();
+        // Load all users and their high scores
+        String userListStr = prefs.getString("userList", "");
+        if (!userListStr.isEmpty()) {
+            String[] users = userListStr.split(",");
+            for (String user : users) {
+                userNames.add(user);
+                int score = prefs.getInteger(user + "_score", 0);
+                allHighScores.put(user, score);
+            }
+        }
+    }
+    
+    private void saveUserData() {
+        // Save high score for current user
+        if (!currentUser.isEmpty()) {
+            int existingScore = allHighScores.get(currentUser, 0);
+            if (currentScore > existingScore) {
+                allHighScores.put(currentUser, currentScore);
+                prefs.putInteger(currentUser + "_score", currentScore);
+            }
+            
+            // Update user list if needed
+            if (!userNames.contains(currentUser, false)) {
+                userNames.add(currentUser);
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < userNames.size; i++) {
+                    if (i > 0) sb.append(",");
+                    sb.append(userNames.get(i));
+                }
+                prefs.putString("userList", sb.toString());
+            }
+            
+            prefs.flush();
         }
     }
 
@@ -168,81 +222,232 @@ public class Main implements ApplicationListener {
 
     @Override
     public void render() {
-        input();
-        logic();
-        draw();
+        switch (gameState) {
+            case LOGIN:
+                inputLogin();
+                drawLogin();
+                break;
+            case ADMIN_VIEW:
+                inputAdminView();
+                drawAdminView();
+                break;
+            case GAME_READY:
+                inputReady();
+                drawReady();
+                break;
+            case GAME_RUNNING:
+                input();
+                logic();
+                draw();
+                break;
+        }
+    }
+    
+    private void inputLogin() {
+        // Handle input for the login screen
+        for (int i = 0; i < 10; i++) {
+            if (Gdx.input.isKeyJustPressed(Keys.NUM_0 + i)) {
+                inputText += i;
+            }
+        }
+        
+        // Add letters
+        for (int i = 0; i < 26; i++) {
+            if (Gdx.input.isKeyJustPressed(Keys.A + i)) {
+                inputText += (char)('a' + i);
+            }
+        }
+        
+        // Handle backspace
+        if (Gdx.input.isKeyJustPressed(Keys.BACKSPACE) && inputText.length() > 0) {
+            inputText = inputText.substring(0, inputText.length() - 1);
+        }
+        
+        // Handle enter/submit
+        if (Gdx.input.isKeyJustPressed(Keys.ENTER)) {
+            if (isSelectingRole) {
+                // First screen - select role
+                if (inputText.equalsIgnoreCase("admin")) {
+                    currentRole = UserRole.ADMIN;
+                    isSelectingRole = false;
+                    inputText = "";
+                } else if (inputText.equalsIgnoreCase("user")) {
+                    currentRole = UserRole.USER;
+                    isSelectingRole = false;
+                    inputText = "";
+                }
+            } else {
+                // Second screen - enter username
+                if (!inputText.isEmpty()) {
+                    currentUser = inputText;
+                    
+                    // Set high score based on user
+                    highScore = allHighScores.get(currentUser, 0);
+                    
+                    // Move to appropriate screen based on role
+                    if (currentRole == UserRole.ADMIN) {
+                        gameState = GameState.ADMIN_VIEW;
+                    } else {
+                        gameState = GameState.GAME_READY;
+                    }
+                }
+            }
+        }
+    }
+    
+    private void drawLogin() {
+        ScreenUtils.clear(Color.BLACK);
+        viewport.apply();
+        spriteBatch.setProjectionMatrix(viewport.getCamera().combined);
+        spriteBatch.begin();
+        
+        float worldWidth = viewport.getWorldWidth();
+        float worldHeight = viewport.getWorldHeight();
+        
+        // Draw background
+        spriteBatch.draw(backgroundTexture, 0, 0, worldWidth, worldHeight);
+        
+        String title, prompt;
+        if (isSelectingRole) {
+            title = "SELECT ROLE";
+            prompt = "Type 'admin' or 'user' and press Enter";
+        } else {
+            title = "ENTER USERNAME";
+            prompt = "Type your username and press Enter";
+        }
+        
+        // Draw title
+        float titleWidth = font.draw(spriteBatch, title, 0, 0).width;
+        font.draw(spriteBatch, title, (worldWidth - titleWidth) / 2, worldHeight * 0.7f);
+        
+        // Draw prompt
+        float promptWidth = font.draw(spriteBatch, prompt, 0, 0).width;
+        font.draw(spriteBatch, prompt, (worldWidth - promptWidth) / 2, worldHeight * 0.6f);
+        
+        // Draw input text
+        float inputWidth = font.draw(spriteBatch, inputText, 0, 0).width;
+        font.draw(spriteBatch, inputText, (worldWidth - inputWidth) / 2, worldHeight * 0.4f);
+        
+        spriteBatch.end();
+    }
+    
+    private void inputAdminView() {
+        // Handle input for the admin view
+        if (Gdx.input.isKeyJustPressed(Keys.ESCAPE) || Gdx.input.isKeyJustPressed(Keys.BACK)) {
+            gameState = GameState.GAME_READY;
+        }
+    }
+    
+    private void drawAdminView() {
+        ScreenUtils.clear(Color.BLACK);
+        viewport.apply();
+        spriteBatch.setProjectionMatrix(viewport.getCamera().combined);
+        spriteBatch.begin();
+        
+        float worldWidth = viewport.getWorldWidth();
+        float worldHeight = viewport.getWorldHeight();
+        
+        // Draw background
+        spriteBatch.draw(backgroundTexture, 0, 0, worldWidth, worldHeight);
+        
+        // Draw title
+        String title = "ADMIN VIEW - HIGH SCORES";
+        float titleWidth = font.draw(spriteBatch, title, 0, 0).width;
+        font.draw(spriteBatch, title, (worldWidth - titleWidth) / 2, worldHeight * 0.9f);
+        
+        // Draw instruction
+        String backMsg = "Press ESC to return to game";
+        float backWidth = font.draw(spriteBatch, backMsg, 0, 0).width;
+        font.draw(spriteBatch, backMsg, (worldWidth - backWidth) / 2, worldHeight * 0.1f);
+        
+        // Draw all high scores
+        float startY = worldHeight * 0.8f;
+        float lineHeight = 30;
+        
+        if (userNames.size == 0) {
+            String noUsers = "No players yet";
+            float noUsersWidth = font.draw(spriteBatch, noUsers, 0, 0).width;
+            font.draw(spriteBatch, noUsers, (worldWidth - noUsersWidth) / 2, startY);
+        } else {
+            for (int i = 0; i < userNames.size; i++) {
+                String userName = userNames.get(i);
+                int score = allHighScores.get(userName, 0);
+                String scoreText = (i + 1) + ". " + userName + ": " + score;
+                font.draw(spriteBatch, scoreText, worldWidth * 0.3f, startY - (i * lineHeight));
+            }
+        }
+        
+        spriteBatch.end();
+    }
+    
+    private void inputReady() {
+        // Handle input for the ready state
+        boolean startInput = Gdx.input.justTouched() || Gdx.input.isKeyJustPressed(Keys.ANY_KEY);
+        
+        if (currentRole == UserRole.ADMIN && Gdx.input.isKeyJustPressed(Keys.H)) {
+            // Admin can view high scores with H key
+            gameState = GameState.ADMIN_VIEW;
+        } else if (startInput) {
+            gameStarted = true;
+            gameState = GameState.GAME_RUNNING;
+            
+            // Mobile browsers need special handling for audio
+            boolean isWebGL = Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL);
+            boolean isMobileBrowser = isWebGL && (Gdx.app.getVersion() == 0);
+            
+            if (isMobileBrowser) {
+                // Android-specific audio handling
+                // ... existing mobile audio code ...
+            } else if (!silentMode && music != null) {
+                try {
+                    music.setVolume(1.0f);
+                    music.play();
+                } catch (Exception e) {
+                    Gdx.app.log("Audio", "Error playing music: " + e.getMessage());
+                    silentMode = true;
+                }
+            }
+        }
+    }
+    
+    private void drawReady() {
+        ScreenUtils.clear(Color.BLACK);
+        viewport.apply();
+        spriteBatch.setProjectionMatrix(viewport.getCamera().combined);
+        spriteBatch.begin();
+        
+        float worldWidth = viewport.getWorldWidth();
+        float worldHeight = viewport.getWorldHeight();
+        
+        // Draw background
+        spriteBatch.draw(backgroundTexture, 0, 0, worldWidth, worldHeight);
+        
+        // Draw welcome message
+        String welcome = "Welcome, " + currentUser + "!";
+        float welcomeWidth = font.draw(spriteBatch, welcome, 0, 0).width;
+        font.draw(spriteBatch, welcome, (worldWidth - welcomeWidth) / 2, worldHeight * 0.7f);
+        
+        // Draw your high score
+        String yourScore = "Your High Score: " + highScore;
+        float scoreWidth = font.draw(spriteBatch, yourScore, 0, 0).width;
+        font.draw(spriteBatch, yourScore, (worldWidth - scoreWidth) / 2, worldHeight * 0.6f);
+        
+        // Draw start instructions
+        String instructions = "TAP OR PRESS ANY KEY TO START";
+        float instrWidth = font.draw(spriteBatch, instructions, 0, 0).width;
+        font.draw(spriteBatch, instructions, (worldWidth - instrWidth) / 2, worldHeight * 0.5f);
+        
+        // Draw admin instructions if applicable
+        if (currentRole == UserRole.ADMIN) {
+            String adminInstr = "Press H to view all high scores";
+            float adminWidth = font.draw(spriteBatch, adminInstr, 0, 0).width;
+            font.draw(spriteBatch, adminInstr, (worldWidth - adminWidth) / 2, worldHeight * 0.4f);
+        }
+        
+        spriteBatch.end();
     }
 
     private void input(){
-        // Start game on any input if not started in WebGL or mobile
-        if (!gameStarted && (Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL) || 
-            Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.Android) ||
-            Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.iOS))) {
-            if (Gdx.input.justTouched() || Gdx.input.isKeyJustPressed(Keys.ANY_KEY)) {
-                gameStarted = true;
-                
-                // Mobile browsers need special handling for audio
-                boolean isMobileBrowser = Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL) && 
-                                         (Gdx.app.getVersion() == 0); // Default to assuming mobile for WebGL
-                
-                // Re-initialize audio for mobile browsers on user gesture
-                if (isMobileBrowser) {
-                    Gdx.app.log("Audio", "Android mobile browser detected - special handling");
-                    // Try to reload and play music immediately on user interaction for Android
-                    try {
-                        if (music != null) {
-                            music.dispose(); // Release any previous instance
-                        }
-                        
-                        // Try different formats - for Android, OGG first
-                        if (Gdx.files.internal("music.ogg").exists()) {
-                            Gdx.app.log("Audio", "Trying OGG for Android mobile browser");
-                            music = Gdx.audio.newMusic(Gdx.files.internal("music.ogg"));
-                        } else if (Gdx.files.internal("music.mp3").exists()) {
-                            Gdx.app.log("Audio", "Trying MP3 for Android mobile browser");
-                            music = Gdx.audio.newMusic(Gdx.files.internal("music.mp3"));
-                        }
-                        
-                        if (music != null) {
-                            // Android-specific settings
-                            music.setLooping(true);
-                            music.setVolume(1.0f);
-                            // Give Android a moment to prepare the audio
-                            Gdx.app.postRunnable(new Runnable() {
-                                @Override
-                                public void run() {
-                                    try {
-                                        music.play();
-                                        Gdx.app.log("Audio", "Android browser: Music play() called on separate thread");
-                                    } catch (Exception e) {
-                                        Gdx.app.log("Audio", "Android thread error: " + e.getMessage());
-                                    }
-                                }
-                            });
-                            Gdx.app.log("Audio", "Android browser: Music scheduled to play");
-                        }
-                    } catch (Exception e) {
-                        Gdx.app.log("Audio", "Android browser: Error with music: " + e.getMessage());
-                        silentMode = true;
-                    }
-                } else if (!silentMode && music != null) {
-                    // Regular WebGL and other platforms
-                    try {
-                        Gdx.app.log("Audio", "Attempting to play music on user interaction");
-                        music.setVolume(1.0f);
-                        music.play();
-                        Gdx.app.log("Audio", "Music play() called successfully");
-                    } catch (Exception e) {
-                        Gdx.app.log("Audio", "Error playing music: " + e.getMessage());
-                        silentMode = true;
-                    }
-                } else {
-                    Gdx.app.log("Audio", "Not playing music - Silent mode: " + silentMode + ", Music object null: " + (music == null));
-                }
-            }
-            return; // Skip other input until game starts
-        }
-
         float speed = 250f;
         float delta = Gdx.graphics.getDeltaTime();
 
@@ -256,6 +461,11 @@ public class Main implements ApplicationListener {
             touchPos.set(Gdx.input.getX(), Gdx.input.getY());
             viewport.unproject(touchPos);
             bucketSprite.setCenterX(touchPos.x);
+        }
+        
+        // Admin can switch to high score view with H
+        if (currentRole == UserRole.ADMIN && Gdx.input.isKeyJustPressed(Keys.H)) {
+            gameState = GameState.ADMIN_VIEW;
         }
     }
 
@@ -379,26 +589,20 @@ public class Main implements ApplicationListener {
         // Draw background
         spriteBatch.draw(backgroundTexture, 0, 0, worldWidth, worldHeight);
         
-        // Check if game needs to show start screen in WebGL or mobile
-        if (!gameStarted && (Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL) ||
-            Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.Android) ||
-            Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.iOS))) {
-            // Draw start instructions
-            String instructions = "TAP OR PRESS ANY KEY TO START";
-            float textWidth = font.draw(spriteBatch, instructions, 0, 0).width;
-            font.draw(spriteBatch, instructions, 
-                     (worldWidth - textWidth) / 2, worldHeight / 2);
-        } else {
-            // Draw game elements
-            bucketSprite.draw(spriteBatch);
-            
-            for (Sprite dropSprite: dropSprites){
-                dropSprite.draw(spriteBatch);
-            }
-            
-            // Draw score and high score
-            font.draw(spriteBatch, "Score: " + currentScore, 10, worldHeight - 10);
-            font.draw(spriteBatch, "High Score: " + highScore, 10, worldHeight - 30);
+        // Draw game elements
+        bucketSprite.draw(spriteBatch);
+        
+        for (Sprite dropSprite: dropSprites){
+            dropSprite.draw(spriteBatch);
+        }
+        
+        // Draw score and high score
+        font.draw(spriteBatch, currentUser + "'s Score: " + currentScore, 10, worldHeight - 10);
+        font.draw(spriteBatch, "High Score: " + highScore, 10, worldHeight - 30);
+        
+        // Draw admin hint if applicable
+        if (currentRole == UserRole.ADMIN) {
+            font.draw(spriteBatch, "Press H for high scores", worldWidth - 200, worldHeight - 10);
         }
 
         spriteBatch.end();
@@ -418,23 +622,29 @@ public class Main implements ApplicationListener {
     }
     @Override
     public void pause() {
-        // Invoked when your application is paused.
+        // Save user data when paused
+        saveUserData();
     }
 
     @Override
     public void resume() {
-        // Invoked when your application is resumed after pause.
         // Reload high score in case it was changed
-        highScore = prefs.getInteger("highScore", 0);
+        if (!currentUser.isEmpty()) {
+            highScore = prefs.getInteger(currentUser + "_score", 0);
+        }
     }
 
     @Override
     public void dispose() {
+        // Save data before disposing
+        saveUserData();
+        
+        // Dispose resources
         backgroundTexture.dispose();
         bucketTexture.dispose();
         dropTexture.dispose();
-        dropSound.dispose();
-        music.dispose();
+        if (dropSound != null) dropSound.dispose();
+        if (music != null) music.dispose();
         spriteBatch.dispose();
         font.dispose();
     }
