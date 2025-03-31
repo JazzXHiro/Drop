@@ -68,47 +68,49 @@ public class Main implements ApplicationListener {
         bucketRectangle = new Rectangle();
         dropRectangle = new Rectangle();
         
-        // Initialize audio but don't play yet
+        // Initialize audio with mobile-friendly approach
         try {
-            // Try to load audio with fallbacks for different platforms
             boolean isWebGL = Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL);
-            Gdx.app.log("Audio", "Platform is WebGL: " + isWebGL);
+            boolean isMobile = Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.Android) || 
+                             Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.iOS);
             
-            // Try different audio formats with better error reporting
-            if (isWebGL) {
-                // WebGL - try multiple formats
+            Gdx.app.log("Audio", "Platform - WebGL: " + isWebGL + ", Mobile: " + isMobile);
+            
+            // Try to load audio files with platform-specific fallbacks
+            if (isWebGL || isMobile) {
+                // For WebGL and mobile, try OGG first (better mobile support)
                 if (Gdx.files.internal("drop.ogg").exists()) {
-                    Gdx.app.log("Audio", "Loading OGG files");
+                    Gdx.app.log("Audio", "Loading OGG files for " + (isWebGL ? "WebGL" : "mobile"));
                     dropSound = Gdx.audio.newSound(Gdx.files.internal("drop.ogg"));
                     music = Gdx.audio.newMusic(Gdx.files.internal("music.ogg"));
                 } else if (Gdx.files.internal("drop.mp3").exists()) {
                     Gdx.app.log("Audio", "OGG not found, loading MP3 files");
                     dropSound = Gdx.audio.newSound(Gdx.files.internal("drop.mp3"));
                     music = Gdx.audio.newMusic(Gdx.files.internal("music.mp3"));
-                } else {
-                    Gdx.app.log("Audio", "No audio files found");
-                    silentMode = true;
                 }
             } else {
-                // Desktop/mobile
+                // For desktop, try MP3 first
                 if (Gdx.files.internal("drop.mp3").exists()) {
                     Gdx.app.log("Audio", "Loading MP3 files for desktop");
                     dropSound = Gdx.audio.newSound(Gdx.files.internal("drop.mp3"));
                     music = Gdx.audio.newMusic(Gdx.files.internal("music.mp3"));
                 } else if (Gdx.files.internal("drop.ogg").exists()) {
-                    Gdx.app.log("Audio", "Loading OGG files for desktop");
+                    Gdx.app.log("Audio", "MP3 not found, loading OGG files");
                     dropSound = Gdx.audio.newSound(Gdx.files.internal("drop.ogg"));
                     music = Gdx.audio.newMusic(Gdx.files.internal("music.ogg"));
-                } else {
-                    Gdx.app.log("Audio", "No audio files found for desktop");
-                    silentMode = true;
                 }
             }
             
             if (music != null) {
                 music.setLooping(true);
-                music.setVolume(1.0f); // Increase volume to maximum
+                music.setVolume(1.0f);
                 Gdx.app.log("Audio", "Music configured successfully");
+            }
+            
+            // Set silent mode if no audio files were found
+            if (dropSound == null && music == null) {
+                Gdx.app.log("Audio", "No audio files found, entering silent mode");
+                silentMode = true;
             }
         } catch (Exception e) {
             Gdx.app.log("Audio", "Error loading audio: " + e.getMessage());
@@ -123,8 +125,11 @@ public class Main implements ApplicationListener {
         prefs = Gdx.app.getPreferences("dropGame");
         highScore = prefs.getInteger("highScore", 0);
         
-        // Auto-start on desktop, but wait for interaction on WebGL
-        if (!Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL)) {
+        // Only auto-start on desktop, wait for interaction on WebGL and mobile
+        boolean isWebGL = Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL);
+        boolean isMobile = Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.Android) || 
+                          Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.iOS);
+        if (!isWebGL && !isMobile) {
             gameStarted = true;
             if (music != null) music.play();
         }
@@ -143,15 +148,16 @@ public class Main implements ApplicationListener {
     }
 
     private void input(){
-        // Start game on any input if not started in WebGL
-        if (!gameStarted && Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL)) {
+        // Start game on any input if not started in WebGL or mobile
+        if (!gameStarted && (Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL) || 
+            Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.Android) ||
+            Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.iOS))) {
             if (Gdx.input.justTouched() || Gdx.input.isKeyJustPressed(Keys.ANY_KEY)) {
                 gameStarted = true;
                 
                 if (!silentMode && music != null) {
                     try {
-                        // Ensure we have a valid music object and try to play it
-                        Gdx.app.log("Audio", "Attempting to play music");
+                        Gdx.app.log("Audio", "Attempting to play music on user interaction");
                         music.setVolume(1.0f);
                         music.play();
                         Gdx.app.log("Audio", "Music play() called successfully");
