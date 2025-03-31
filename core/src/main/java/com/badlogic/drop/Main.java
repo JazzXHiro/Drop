@@ -56,6 +56,10 @@ public class Main implements ApplicationListener {
     Rectangle bucketRectangle;
     Rectangle dropRectangle;
     
+    // Button rectangles for login screen
+    private Rectangle adminButton = new Rectangle();
+    private Rectangle userButton = new Rectangle();
+    
     // Score variables
     private int currentScore = 0;
     private int highScore = 0;
@@ -70,6 +74,10 @@ public class Main implements ApplicationListener {
     private boolean isSelectingRole = true;
     private ObjectMap<String, Integer> allHighScores = new ObjectMap<>();
     private Array<String> userNames = new Array<>();
+    
+    // Text input field for username (clickable area)
+    private Rectangle usernameField = new Rectangle();
+    private boolean waitingForTextInput = false;
 
     private boolean gameStarted = false;
     private boolean silentMode = false;
@@ -245,52 +253,94 @@ public class Main implements ApplicationListener {
     
     private void inputLogin() {
         // Handle input for the login screen
-        for (int i = 0; i < 10; i++) {
-            if (Gdx.input.isKeyJustPressed(Keys.NUM_0 + i)) {
-                inputText += i;
-            }
-        }
-        
-        // Add letters
-        for (int i = 0; i < 26; i++) {
-            if (Gdx.input.isKeyJustPressed(Keys.A + i)) {
-                inputText += (char)('a' + i);
-            }
-        }
-        
-        // Handle backspace
-        if (Gdx.input.isKeyJustPressed(Keys.BACKSPACE) && inputText.length() > 0) {
-            inputText = inputText.substring(0, inputText.length() - 1);
-        }
-        
-        // Handle enter/submit
-        if (Gdx.input.isKeyJustPressed(Keys.ENTER)) {
-            if (isSelectingRole) {
-                // First screen - select role
-                if (inputText.equalsIgnoreCase("admin")) {
+        if (isSelectingRole) {
+            // First screen - select role with clickable buttons
+            if (Gdx.input.justTouched()) {
+                touchPos.set(Gdx.input.getX(), Gdx.input.getY());
+                viewport.unproject(touchPos);
+                
+                if (adminButton.contains(touchPos.x, touchPos.y)) {
                     currentRole = UserRole.ADMIN;
                     isSelectingRole = false;
                     inputText = "";
-                } else if (inputText.equalsIgnoreCase("user")) {
+                } else if (userButton.contains(touchPos.x, touchPos.y)) {
                     currentRole = UserRole.USER;
                     isSelectingRole = false;
                     inputText = "";
                 }
-            } else {
-                // Second screen - enter username
-                if (!inputText.isEmpty()) {
-                    currentUser = inputText;
-                    
-                    // Set high score based on user
-                    highScore = allHighScores.get(currentUser, 0);
-                    
-                    // Move to appropriate screen based on role
-                    if (currentRole == UserRole.ADMIN) {
-                        gameState = GameState.ADMIN_VIEW;
-                    } else {
-                        gameState = GameState.GAME_READY;
+            }
+        } else {
+            // Username input screen
+            
+            // Handle touch input for mobile/browser
+            if (Gdx.input.justTouched() && !waitingForTextInput) {
+                touchPos.set(Gdx.input.getX(), Gdx.input.getY());
+                viewport.unproject(touchPos);
+                
+                // Check if username field was clicked
+                if (usernameField.contains(touchPos.x, touchPos.y)) {
+                    // Show input dialog for mobile
+                    waitingForTextInput = true;
+                    Gdx.input.getTextInput(new com.badlogic.gdx.Input.TextInputListener() {
+                        @Override
+                        public void input(String text) {
+                            if (text != null && !text.isEmpty()) {
+                                inputText = text;
+                                submitUsername();
+                            }
+                            waitingForTextInput = false;
+                        }
+                        
+                        @Override
+                        public void canceled() {
+                            waitingForTextInput = false;
+                        }
+                    }, "Enter Username", "", "Type your username here");
+                }
+            }
+            
+            // Also keep keyboard input for desktop
+            if (!waitingForTextInput) {
+                // Add numbers
+                for (int i = 0; i < 10; i++) {
+                    if (Gdx.input.isKeyJustPressed(Keys.NUM_0 + i)) {
+                        inputText += i;
                     }
                 }
+                
+                // Add letters
+                for (int i = 0; i < 26; i++) {
+                    if (Gdx.input.isKeyJustPressed(Keys.A + i)) {
+                        inputText += (char)('a' + i);
+                    }
+                }
+                
+                // Handle backspace
+                if (Gdx.input.isKeyJustPressed(Keys.BACKSPACE) && inputText.length() > 0) {
+                    inputText = inputText.substring(0, inputText.length() - 1);
+                }
+                
+                // Handle enter/submit
+                if (Gdx.input.isKeyJustPressed(Keys.ENTER)) {
+                    submitUsername();
+                }
+            }
+        }
+    }
+    
+    private void submitUsername() {
+        // Process username submission
+        if (!inputText.isEmpty()) {
+            currentUser = inputText;
+            
+            // Set high score based on user
+            highScore = allHighScores.get(currentUser, 0);
+            
+            // Move to appropriate screen based on role
+            if (currentRole == UserRole.ADMIN) {
+                gameState = GameState.ADMIN_VIEW;
+            } else {
+                gameState = GameState.GAME_READY;
             }
         }
     }
@@ -307,26 +357,105 @@ public class Main implements ApplicationListener {
         // Draw background
         spriteBatch.draw(backgroundTexture, 0, 0, worldWidth, worldHeight);
         
-        String title, prompt;
         if (isSelectingRole) {
-            title = "SELECT ROLE";
-            prompt = "Type 'admin' or 'user' and press Enter";
+            // First screen - draw role selection buttons
+            String title = "SELECT ROLE";
+            float titleWidth = font.draw(spriteBatch, title, 0, 0).width;
+            font.draw(spriteBatch, title, (worldWidth - titleWidth) / 2, worldHeight * 0.8f);
+            
+            // Draw Admin button
+            float buttonWidth = 200;
+            float buttonHeight = 60;
+            float buttonSpacing = 40;
+            float startY = worldHeight * 0.5f;
+            
+            // Admin button
+            adminButton.set(worldWidth / 2 - buttonWidth / 2, startY, buttonWidth, buttonHeight);
+            spriteBatch.setColor(0.2f, 0.2f, 0.8f, 1); // Blue for admin
+            spriteBatch.draw(backgroundTexture, adminButton.x, adminButton.y, adminButton.width, adminButton.height);
+            spriteBatch.setColor(Color.WHITE);
+            
+            String adminText = "ADMIN";
+            float adminTextWidth = font.draw(spriteBatch, adminText, 0, 0).width;
+            font.draw(spriteBatch, adminText, 
+                     adminButton.x + (adminButton.width - adminTextWidth) / 2, 
+                     adminButton.y + adminButton.height * 0.65f);
+            
+            // User button
+            userButton.set(worldWidth / 2 - buttonWidth / 2, startY - buttonHeight - buttonSpacing, buttonWidth, buttonHeight);
+            spriteBatch.setColor(0.2f, 0.8f, 0.2f, 1); // Green for user
+            spriteBatch.draw(backgroundTexture, userButton.x, userButton.y, userButton.width, userButton.height);
+            spriteBatch.setColor(Color.WHITE);
+            
+            String userText = "USER";
+            float userTextWidth = font.draw(spriteBatch, userText, 0, 0).width;
+            font.draw(spriteBatch, userText, 
+                     userButton.x + (userButton.width - userTextWidth) / 2, 
+                     userButton.y + userButton.height * 0.65f);
+            
+            // Draw instruction
+            String tapInstr = "Tap a button to select your role";
+            float instrWidth = font.draw(spriteBatch, tapInstr, 0, 0).width;
+            font.draw(spriteBatch, tapInstr, (worldWidth - instrWidth) / 2, worldHeight * 0.27f);
         } else {
-            title = "ENTER USERNAME";
-            prompt = "Type your username and press Enter";
+            // Second screen - username input
+            String title = "ENTER USERNAME";
+            float titleWidth = font.draw(spriteBatch, title, 0, 0).width;
+            font.draw(spriteBatch, title, (worldWidth - titleWidth) / 2, worldHeight * 0.7f);
+            
+            // Draw input field as a button on mobile
+            float fieldWidth = 300;
+            float fieldHeight = 60;
+            usernameField.set(worldWidth / 2 - fieldWidth / 2, worldHeight * 0.4f, fieldWidth, fieldHeight);
+            
+            // Draw input field background
+            spriteBatch.setColor(0.1f, 0.1f, 0.1f, 1); // Dark background
+            spriteBatch.draw(backgroundTexture, usernameField.x, usernameField.y, usernameField.width, usernameField.height);
+            spriteBatch.setColor(Color.WHITE);
+            
+            // Draw text or placeholder
+            String displayText = inputText.isEmpty() ? "TAP HERE TO ENTER USERNAME" : inputText;
+            float textScale = inputText.isEmpty() ? 0.8f : 1.0f; // Smaller text for placeholder
+            
+            // Store original scale
+            float originalScaleX = font.getScaleX();
+            float originalScaleY = font.getScaleY();
+            
+            // Set scaled font for placeholder
+            if (inputText.isEmpty()) {
+                font.getData().setScale(textScale);
+            }
+            
+            // Measure and draw text
+            float textWidth = font.draw(spriteBatch, displayText, 0, 0).width;
+            float textX = usernameField.x + (usernameField.width - textWidth) / 2;
+            float textY = usernameField.y + usernameField.height * 0.65f;
+            
+            if (inputText.isEmpty()) {
+                font.setColor(0.7f, 0.7f, 0.7f, 1); // Gray for placeholder
+            }
+            
+            font.draw(spriteBatch, displayText, textX, textY);
+            
+            // Reset font settings
+            font.setColor(Color.WHITE);
+            if (inputText.isEmpty()) {
+                font.getData().setScale(originalScaleX, originalScaleY);
+            }
+            
+            // Instructions
+            String instructions;
+            if (Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL) || 
+                Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.Android) || 
+                Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.iOS)) {
+                instructions = "Tap the field above to enter your username";
+            } else {
+                instructions = "Type your username and press Enter";
+            }
+            
+            float promptWidth = font.draw(spriteBatch, instructions, 0, 0).width;
+            font.draw(spriteBatch, instructions, (worldWidth - promptWidth) / 2, worldHeight * 0.3f);
         }
-        
-        // Draw title
-        float titleWidth = font.draw(spriteBatch, title, 0, 0).width;
-        font.draw(spriteBatch, title, (worldWidth - titleWidth) / 2, worldHeight * 0.7f);
-        
-        // Draw prompt
-        float promptWidth = font.draw(spriteBatch, prompt, 0, 0).width;
-        font.draw(spriteBatch, prompt, (worldWidth - promptWidth) / 2, worldHeight * 0.6f);
-        
-        // Draw input text
-        float inputWidth = font.draw(spriteBatch, inputText, 0, 0).width;
-        font.draw(spriteBatch, inputText, (worldWidth - inputWidth) / 2, worldHeight * 0.4f);
         
         spriteBatch.end();
     }
