@@ -10,9 +10,41 @@ import com.badlogic.gdx.utils.ObjectMap;
 public class WebDatabaseManager implements DatabaseManager {
     private ObjectMap<String, Integer> highScores = new ObjectMap<>();
     private Array<String> usernames = new Array<>();
+    private WebSyncManager syncManager;
+    private boolean initialSyncDone = false;
     
     public WebDatabaseManager() {
+        syncManager = new WebSyncManager();
         loadData();
+        
+        // Try to fetch remote data
+        syncManager.fetchHighScores(new WebSyncManager.FetchCallback() {
+            @Override
+            public void onComplete(boolean success, ObjectMap<String, Integer> remoteHighScores, Array<String> remoteUsernames) {
+                if (success && remoteHighScores != null && remoteUsernames != null) {
+                    // Merge remote data with local data
+                    mergeData(remoteHighScores, remoteUsernames);
+                    saveToLocalStorage();
+                }
+                initialSyncDone = true;
+            }
+        });
+    }
+    
+    private void mergeData(ObjectMap<String, Integer> remoteHighScores, Array<String> remoteUsernames) {
+        // For each remote username
+        for (String username : remoteUsernames) {
+            int remoteScore = remoteHighScores.get(username, 0);
+            int localScore = highScores.get(username, 0);
+            
+            // Keep the higher score
+            if (remoteScore > localScore) {
+                highScores.put(username, remoteScore);
+                if (!usernames.contains(username, false)) {
+                    usernames.add(username);
+                }
+            }
+        }
     }
     
     private void loadData() {
@@ -31,6 +63,32 @@ public class WebDatabaseManager implements DatabaseManager {
         } catch (Exception e) {
             Gdx.app.log("WebDatabaseManager", "Error loading data: " + e.getMessage());
         }
+    }
+    
+    private void saveToLocalStorage() {
+        // Save high scores
+        StringBuilder scoresJson = new StringBuilder();
+        scoresJson.append("{");
+        boolean first = true;
+        for (ObjectMap.Entry<String, Integer> entry : highScores) {
+            if (!first) scoresJson.append(",");
+            scoresJson.append("\"").append(entry.key).append("\":").append(entry.value);
+            first = false;
+        }
+        scoresJson.append("}");
+        setLocalStorageItem("highScores", scoresJson.toString());
+
+        // Save usernames
+        StringBuilder usernamesJson = new StringBuilder();
+        usernamesJson.append("[");
+        first = true;
+        for (String username : usernames) {
+            if (!first) usernamesJson.append(",");
+            usernamesJson.append("\"").append(username).append("\"");
+            first = false;
+        }
+        usernamesJson.append("]");
+        setLocalStorageItem("usernames", usernamesJson.toString());
     }
     
     // Native methods to interact with browser localStorage
@@ -68,6 +126,11 @@ public class WebDatabaseManager implements DatabaseManager {
                 }
                 setLocalStorageItem("userList", sb.toString());
             }
+            
+            // Sync to remote if we've done the initial sync
+            if (initialSyncDone) {
+                syncManager.syncHighScores(highScores, usernames);
+            }
         }
     }
     
@@ -88,6 +151,9 @@ public class WebDatabaseManager implements DatabaseManager {
     
     @Override
     public void flush() {
-        // Nothing to do, we save immediately
+        // Sync with remote storage
+        if (initialSyncDone) {
+            syncManager.syncHighScores(highScores, usernames);
+        }
     }
 }

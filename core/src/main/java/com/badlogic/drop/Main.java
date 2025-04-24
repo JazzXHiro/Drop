@@ -86,6 +86,10 @@ public class Main implements ApplicationListener {
 
     private boolean gameStarted = false;
     private boolean silentMode = false;
+    
+    // Add sync timer
+    private float syncTimer = 0;
+    private static final float SYNC_INTERVAL = 60; // 60 seconds
 
     @Override
     public void create() {
@@ -211,6 +215,15 @@ public class Main implements ApplicationListener {
 
     @Override
     public void render() {
+        // Check if we need to sync data (for web version only)
+        if (Gdx.app.getType().equals(com.badlogic.gdx.Application.ApplicationType.WebGL)) {
+            syncTimer += Gdx.graphics.getDeltaTime();
+            if (syncTimer >= SYNC_INTERVAL) {
+                syncTimer = 0;
+                dbManager.flush(); // This will trigger a sync in WebDatabaseManager
+            }
+        }
+        
         switch (gameState) {
             case LOGIN:
                 inputLogin();
