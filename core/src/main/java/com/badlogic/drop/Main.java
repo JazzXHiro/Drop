@@ -3,7 +3,6 @@ package com.badlogic.drop;
 import com.badlogic.gdx.ApplicationListener;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input.Keys;
-import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.Color;
@@ -68,7 +67,9 @@ public class Main implements ApplicationListener {
     private int currentScore = 0;
     private int highScore = 0;
     private BitmapFont font;
-    private Preferences prefs;
+    
+    // Replace Preferences with DatabaseManager
+    private DatabaseManager dbManager;
     
     // Login system variables
     private GameState gameState = GameState.LOGIN;
@@ -184,46 +185,22 @@ public class Main implements ApplicationListener {
         font = new BitmapFont();
         font.setColor(Color.WHITE);
         
-        // Load user data and high scores
+        // Initialize database manager instead of directly loading user data
+        dbManager = DatabaseManagerFactory.getDatabaseManager();
         loadUserData();
     }
 
     private void loadUserData() {
-        prefs = Gdx.app.getPreferences("dropGame");
-        
-        // Load all users and their high scores
-        String userListStr = prefs.getString("userList", "");
-        if (!userListStr.isEmpty()) {
-            String[] users = userListStr.split(",");
-            for (String user : users) {
-                userNames.add(user);
-                int score = prefs.getInteger(user + "_score", 0);
-                allHighScores.put(user, score);
-            }
-        }
+        // Get data from database manager instead of preferences
+        allHighScores = dbManager.getAllHighScores();
+        userNames = dbManager.getAllUsernames();
     }
     
     private void saveUserData() {
         // Save high score for current user
         if (!currentUser.isEmpty()) {
-            int existingScore = allHighScores.get(currentUser, 0);
-            if (currentScore > existingScore) {
-                allHighScores.put(currentUser, currentScore);
-                prefs.putInteger(currentUser + "_score", currentScore);
-            }
-            
-            // Update user list if needed
-            if (!userNames.contains(currentUser, false)) {
-                userNames.add(currentUser);
-                StringBuilder sb = new StringBuilder();
-                for (int i = 0; i < userNames.size; i++) {
-                    if (i > 0) sb.append(",");
-                    sb.append(userNames.get(i));
-                }
-                prefs.putString("userList", sb.toString());
-            }
-            
-            prefs.flush();
+            dbManager.saveHighScore(currentUser, currentScore);
+            dbManager.flush();
         }
     }
 
@@ -348,8 +325,8 @@ public class Main implements ApplicationListener {
         if (!inputText.isEmpty()) {
             currentUser = inputText;
             
-            // Set high score based on user
-            highScore = allHighScores.get(currentUser, 0);
+            // Set high score based on user using database manager
+            highScore = dbManager.getHighScore(currentUser);
             
             // Move to appropriate screen based on role
             if (currentRole == UserRole.ADMIN) {
@@ -760,9 +737,9 @@ public class Main implements ApplicationListener {
                 // Update high score if needed
                 if (currentScore > highScore) {
                     highScore = currentScore;
-                    // Save high score
-                    prefs.putInteger("highScore", highScore);
-                    prefs.flush();
+                    // Save high score using database manager
+                    dbManager.saveHighScore(currentUser, highScore);
+                    dbManager.flush();
                 }
             }
         }
@@ -830,10 +807,10 @@ public class Main implements ApplicationListener {
     public void resume() {
         // Reload high score in case it was changed
         if (!currentUser.isEmpty()) {
-            highScore = prefs.getInteger(currentUser + "_score", 0);
+            highScore = dbManager.getHighScore(currentUser);
         }
     }
-
+    
     @Override
     public void dispose() {
         // Save data before disposing
